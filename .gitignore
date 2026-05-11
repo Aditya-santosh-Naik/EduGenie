@@ -36,3 +36,7 @@ models/
 # Docker volumes
 qdrant_storage/
 redis-data/
+
+# Conversation & Task Tracking
+ISSUES.md
+ROADMAP.md
