@@ -85,7 +85,7 @@ Generate a complete structured educational explanation for this topic.`;
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: userPrompt }
         ],
-        options: { temperature: 0.7, num_ctx: 8192 }
+        options: { temperature: 0.7, num_ctx: 8192, num_gpu: 0 }
       })
     });
 
@@ -137,7 +137,7 @@ export async function generateEmbedding(text: string): Promise<number[]> {
     const res = await fetch(`${process.env.OLLAMA_BASE_URL}/api/embeddings`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: process.env.EMBED_MODEL, prompt: text })
+      body: JSON.stringify({ model: process.env.EMBED_MODEL, prompt: text, options: { num_gpu: 0 } })
     });
     const data = await res.json() as { embedding: number[] };
     return data.embedding;
