@@ -85,8 +85,8 @@ export async function generateImage(prompt: string): Promise<string | null> {
   try {
     await fetch(`${COMFYUI_URL}/system_stats`, { signal: AbortSignal.timeout(3000) });
   } catch {
-    console.warn('[imageGen] ComfyUI not available — skipping image generation');
-    return null;
+    console.warn('[imageGen] ComfyUI not available — returning mock placeholder');
+    return `https://placehold.co/1024x1024/png?text=${encodeURIComponent(prompt.substring(0, 50))}`;
   }
 
   return withVRAM(async () => {
