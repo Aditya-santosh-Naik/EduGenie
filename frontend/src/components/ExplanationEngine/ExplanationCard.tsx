@@ -6,9 +6,40 @@ import { useSessionStore, ExplanationMode } from '../../store/sessionStore';
 import { useExplain } from '../../hooks/useExplain';
 import { db } from '../../lib/db';
 import DiagramRenderer from './DiagramRenderer';
-import ImageGallery from './ImageGallery';
 import ReadAloud from '../Voice/ReadAloud';
 import PrerequisitePrompt from '../common/PrerequisitePrompt';
+
+function InlineImage({ imageId, images }: { imageId: string, images: Array<{ id: string; prompt: string }> }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const image = images.find(img => img.id === imageId);
+
+  if (!image) return null;
+
+  const generate = async () => {
+    setLoading(true);
+    const { api } = await import('../../lib/api');
+    const resultUrl = await api.image.generate(image.prompt);
+    setUrl(resultUrl);
+    setLoading(false);
+  };
+
+  return (
+    <div className="my-6 rounded-xl overflow-hidden border border-white/10 bg-bg-800/50">
+      {url ? (
+        <img src={url} alt={image.prompt} className="w-full h-auto object-cover" loading="lazy" />
+      ) : (
+        <div className="p-6 flex flex-col items-center justify-center gap-3">
+          {loading ? (
+             <><RefreshCw size={24} className="animate-spin text-accent-400" /><p className="text-sm text-text-muted">Generating visual summary...</p></>
+          ) : (
+             <><Image size={24} className="text-text-muted" /><p className="text-sm text-center text-text-muted max-w-md">{image.prompt}</p><button onClick={generate} className="btn-primary px-4 py-2 mt-2">Generate Image</button></>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface ExplanationData {
   explanationText?: string;
@@ -99,6 +130,13 @@ export default function ExplanationCard() {
 
   // Streaming state — show raw text as it arrives
   if (isLoading && streamedText) {
+    const extractExplanationText = (raw: string) => {
+      const match = raw.match(/"explanationText"\s*:\s*"((?:\\"|[^"])*)/);
+      if (match) return match[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+      return raw.includes('"explanationText"') ? 'Initializing explanation...' : '';
+    };
+    const displayStream = extractExplanationText(streamedText);
+
     return (
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -110,7 +148,7 @@ export default function ExplanationCard() {
           <span className="text-sm text-text-muted">Generating explanation...</span>
         </div>
         <div className="prose prose-invert max-w-none text-sm leading-relaxed text-text-main/80 font-mono whitespace-pre-wrap">
-          {streamedText}
+          {displayStream || '...'}
         </div>
       </motion.div>
     );
@@ -185,6 +223,12 @@ export default function ExplanationCard() {
         {/* Render explanation with heading support */}
         <div className="prose prose-invert max-w-none">
           {data.explanationText?.split('\n').map((line, i) => {
+            if (line.includes('[IMAGE_PLACEHOLDER_')) {
+              const match = line.match(/\[IMAGE_PLACEHOLDER_(.*?)\]/);
+              if (match) {
+                 return <InlineImage key={i} imageId={match[1]} images={data.images || []} />;
+              }
+            }
             if (line.startsWith('## ')) {
               return (
                 <h3 key={i} className="mt-6 mb-2 text-lg font-semibold text-accent-400">
@@ -217,13 +261,6 @@ export default function ExplanationCard() {
         </div>
       )}
 
-      {/* Images */}
-      {data.images && data.images.length > 0 && (
-        <div className="glass-card p-6">
-          <h3 className="mb-4 text-base font-semibold text-accent-400">Visual Aids</h3>
-          <ImageGallery images={data.images} />
-        </div>
-      )}
 
       {/* Applications */}
       {data.applications && data.applications.length > 0 && (

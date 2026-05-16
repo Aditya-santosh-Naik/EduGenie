@@ -4,29 +4,31 @@
 let vramInUse = false;
 const queue: Array<() => void> = [];
 
-export async function withVRAM<T>(task: () => Promise<T>): Promise<T> {
-  if (!vramInUse) {
-    vramInUse = true;
-    try {
-      return await task();
-    } finally {
+export async function acquireVRAM(): Promise<() => void> {
+  return new Promise((resolve) => {
+    const release = () => {
       vramInUse = false;
       queue.shift()?.();
-    }
-  }
-  return new Promise((resolve, reject) => {
-    queue.push(async () => {
+    };
+    if (!vramInUse) {
       vramInUse = true;
-      try {
-        resolve(await task());
-      } catch (e) {
-        reject(e);
-      } finally {
-        vramInUse = false;
-        queue.shift()?.();
-      }
-    });
+      resolve(release);
+    } else {
+      queue.push(() => {
+        vramInUse = true;
+        resolve(release);
+      });
+    }
   });
+}
+
+export async function withVRAM<T>(task: () => Promise<T>): Promise<T> {
+  const release = await acquireVRAM();
+  try {
+    return await task();
+  } finally {
+    release();
+  }
 }
 
 // Call this before ComfyUI to ensure Ollama has released VRAM
@@ -44,5 +46,19 @@ export async function unloadOllama(): Promise<void> {
     await new Promise(r => setTimeout(r, 2000));
   } catch {
     // Ollama might not be loaded — that's fine
+  }
+}
+
+// Call this before Ollama to ensure ComfyUI has released VRAM
+export async function unloadComfyUI(): Promise<void> {
+  try {
+    await fetch(`${process.env.COMFYUI_URL || 'http://localhost:8188'}/free`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ unload_models: true, free_memory: true })
+    });
+    await new Promise(r => setTimeout(r, 2000));
+  } catch {
+    // ComfyUI might not be running
   }
 }

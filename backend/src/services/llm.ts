@@ -1,4 +1,4 @@
-import { withVRAM } from './vramLock.js';
+import { withVRAM, acquireVRAM, unloadComfyUI } from './vramLock.js';
 import { getCached, setCached } from './cache.js';
 
 const SYSTEM_PROMPT = `You are EduGenie, an expert AI teacher for students aged 10-18.
@@ -11,7 +11,7 @@ RESPONSE FORMAT — return this exact JSON structure:
     {"id": "f1", "caption": "scene description", "image_prompt": "detailed educational image prompt"}
   ],
   "images": [
-    {"id": "img1", "prompt": "educational diagram of [topic], textbook illustration style, clean white background, labeled, no humans"}
+    {"id": "img1", "prompt": "A comprehensive educational infographic of [topic]. The image must synthesize the entire concept in a single unified diagram, textbook illustration style, safe for students, no humans"}
   ],
   "audio": {"shouldGenerate": true, "ttsText": "same as explanationText"},
   "youtube": {"shouldInclude": true, "query": "[topic] explained for students"},
@@ -32,7 +32,8 @@ RULES:
 - explanationText MUST use ## headings, be at least 400 words, teach clearly
 - quiz MUST have exactly 4 questions, each with exactly 4 options
 - diagram code MUST be valid Mermaid.js syntax
-- image prompts MUST be safe for students, no people, educational style
+- image prompts MUST be comprehensive visual summaries
+- You MUST insert image placeholders like [IMAGE_PLACEHOLDER_img1] directly inside the explanationText where the visual aid is most relevant
 - NEVER return anything outside the JSON object
 - NEVER truncate the response`;
 
@@ -57,7 +58,8 @@ export async function generateExplanation(
   topic: string,
   mode: 'text' | 'images' | 'story' | 'story+video',
   level: 'beginner' | 'intermediate' | 'advanced',
-  context?: string
+  context?: string,
+  signal?: AbortSignal
 ): Promise<AsyncGenerator<string>> {
   // Check cache first — same topic = serve cache, never re-run LLM
   const cached = await getCached(topic, mode, level);
@@ -73,19 +75,23 @@ Explanation mode: ${mode}
 ${context ? `Relevant context from student's uploaded materials:\n${context}\n` : ''}
 Generate a complete structured educational explanation for this topic.`;
 
-  return withVRAM(async () => {
+  const releaseVRAM = await acquireVRAM();
+  try {
+    await unloadComfyUI();
     const res = await fetch(`${process.env.OLLAMA_BASE_URL}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      signal,
       body: JSON.stringify({
         model: process.env.LLM_MODEL,
         format: 'json',
         stream: true,
+        keep_alive: "5m",
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: userPrompt }
         ],
-        options: { temperature: 0.7, num_ctx: 8192, num_gpu: 0 }
+        options: { temperature: 0.7, num_ctx: 8192, num_gpu: 1 }
       })
     });
 
@@ -96,50 +102,60 @@ Generate a complete structured educational explanation for this topic.`;
     }
 
     async function* streamTokens(): AsyncGenerator<string> {
-      const reader = (res.body as ReadableStream<Uint8Array>).getReader();
-      const decoder = new TextDecoder();
-      let fullContent = '';
+      try {
+        const reader = (res.body as ReadableStream<Uint8Array>).getReader();
+        const decoder = new TextDecoder();
+        let fullContent = '';
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n').filter(Boolean);
-        for (const line of lines) {
-          try {
-            const parsed = JSON.parse(line);
-            if (parsed.message?.content) {
-              fullContent += parsed.message.content;
-              yield parsed.message.content;
-            }
-            if (parsed.done) {
-              // Cache the complete response
-              try {
-                const parsedContent = JSON.parse(fullContent);
-                await setCached(topic, mode, level, parsedContent);
-              } catch {
-                /* partial/malformed response — don't cache */
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value);
+          const lines = chunk.split('\n').filter(Boolean);
+          for (const line of lines) {
+            try {
+              const parsed = JSON.parse(line);
+              if (parsed.message?.content) {
+                fullContent += parsed.message.content;
+                yield parsed.message.content;
               }
+              if (parsed.done) {
+                try {
+                  const parsedContent = JSON.parse(fullContent);
+                  await setCached(topic, mode, level, parsedContent);
+                } catch {
+                  /* skip */
+                }
+              }
+            } catch {
+              /* skip */
             }
-          } catch {
-            /* skip malformed chunks */
           }
         }
+      } finally {
+        releaseVRAM();
       }
     }
 
     return streamTokens();
-  });
+  } catch (err) {
+    releaseVRAM();
+    throw err;
+  }
 }
 
 export async function generateEmbedding(text: string): Promise<number[]> {
-  return withVRAM(async () => {
+  const releaseVRAM = await acquireVRAM();
+  try {
+    await unloadComfyUI();
     const res = await fetch(`${process.env.OLLAMA_BASE_URL}/api/embeddings`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: process.env.EMBED_MODEL, prompt: text, options: { num_gpu: 0 } })
+      body: JSON.stringify({ model: process.env.EMBED_MODEL, prompt: text, keep_alive: "5m", options: { num_gpu: 1 } })
     });
     const data = await res.json() as { embedding: number[] };
     return data.embedding;
-  });
+  } finally {
+    releaseVRAM();
+  }
 }

@@ -1,4 +1,13 @@
+import { useAuthStore } from '../store/authStore';
+
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+
+// Call this before every fetch to get the auth header
+function getAuthHeaders(): Record<string, string> {
+  const token = useAuthStore.getState().user?.idToken;
+  if (!token) return {};
+  return { 'Authorization': `Bearer ${token}` };
+}
 
 /** Stream explanation from SSE endpoint */
 export async function* streamExplanation(
@@ -9,7 +18,7 @@ export async function* streamExplanation(
 ): AsyncGenerator<{ type: string; data: string }> {
   const res = await fetch(`${BASE}/api/explain`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify({ topic, mode, level, userId })
   });
 
@@ -66,7 +75,7 @@ export async function* streamQuiz(
 ): AsyncGenerator<{ type: string; data: string }> {
   const res = await fetch(`${BASE}/api/quiz/generate`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify({ topic, level })
   });
 
@@ -115,7 +124,7 @@ export const api = {
       try {
         const res = await fetch(`${BASE}/api/voice/tts`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
           body: JSON.stringify({ text })
         });
         if (!res.ok) return null;
@@ -128,7 +137,7 @@ export const api = {
       try {
         const fd = new FormData();
         fd.append('audio', audioBlob, 'audio.wav');
-        const res = await fetch(`${BASE}/api/voice/stt`, { method: 'POST', body: fd });
+        const res = await fetch(`${BASE}/api/voice/stt`, { method: 'POST', headers: { ...getAuthHeaders() }, body: fd });
         if (!res.ok) return null;
         return ((await res.json()) as { transcript: string }).transcript;
       } catch {
@@ -141,7 +150,7 @@ export const api = {
       const fd = new FormData();
       fd.append('file', file);
       fd.append('userId', userId);
-      const res = await fetch(`${BASE}/api/rag/upload`, { method: 'POST', body: fd });
+      const res = await fetch(`${BASE}/api/rag/upload`, { method: 'POST', headers: { ...getAuthHeaders() }, body: fd });
       return res.json();
     }
   },
@@ -149,25 +158,25 @@ export const api = {
     generateVideo: async (topic: string) => {
       const res = await fetch(`${BASE}/api/media/video/generate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ topic })
       });
       return res.json();
     },
     videoStatus: async (jobId: string) => {
-      const res = await fetch(`${BASE}/api/media/video/status/${jobId}`);
+      const res = await fetch(`${BASE}/api/media/video/status/${jobId}`, { headers: { ...getAuthHeaders() } });
       return res.json();
     }
   },
   gamification: {
     profile: async (userId: string) => {
-      const res = await fetch(`${BASE}/api/gamification/profile/${userId}`);
+      const res = await fetch(`${BASE}/api/gamification/profile/${userId}`, { headers: { ...getAuthHeaders() } });
       return res.json();
     },
     addXP: async (userId: string, amount: number, reason: string) => {
       const res = await fetch(`${BASE}/api/gamification/xp`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ userId, amount, reason })
       });
       return res.json();
@@ -175,7 +184,7 @@ export const api = {
     updateStreak: async (userId: string) => {
       const res = await fetch(`${BASE}/api/gamification/streak`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ userId })
       });
       return res.json();
@@ -186,7 +195,7 @@ export const api = {
       try {
         const res = await fetch(`${BASE}/api/explain/image`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
           body: JSON.stringify({ prompt })
         });
         const data = (await res.json()) as { imageUrl: string | null };

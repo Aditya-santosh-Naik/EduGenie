@@ -17,19 +17,22 @@ docker compose up -d
 timeout /t 5 /nobreak >nul
 
 :: ── 3. Start ComfyUI (If installed) ──────
-echo [comfyui] Checking for ComfyUI...
-if exist "..\ComfyUI_windows_portable\run_nvidia_gpu.bat" (
-    echo [comfyui] Starting ComfyUI server...
-    cd ..\ComfyUI_windows_portable
-    start /B "ComfyUI" cmd /c "run_nvidia_gpu.bat > ..\EduGenie\logs\comfyui.log 2>&1"
-    cd ..\EduGenie
-) else if exist "ComfyUI_windows_portable\run_nvidia_gpu.bat" (
-    echo [comfyui] Starting ComfyUI server...
-    cd ComfyUI_windows_portable
-    start /B "ComfyUI" cmd /c "run_nvidia_gpu.bat > ..\logs\comfyui.log 2>&1"
-    cd ..
+echo [comfyui] Checking ComfyUI...
+curl -sf http://localhost:8188/system_stats >nul 2>&1
+if %errorlevel% equ 0 (
+    echo [+] ComfyUI already running on port 8188
 ) else (
-    echo [comfyui] WARNING: ComfyUI_windows_portable not found. Image/Video gen will be disabled.
+    echo [!] Starting ComfyUI...
+    start "ComfyUI" /d D:\Edugenie\ComfyUI cmd /c run_comfyui.bat
+    timeout /t 30 /nobreak >nul
+    curl -sf http://localhost:8188/system_stats >nul 2>&1
+    if %errorlevel% equ 0 (
+        echo [+] ComfyUI started on port 8188
+    ) else (
+        echo [WARNING] ComfyUI did not start in time.
+        echo           Image and video generation will be unavailable.
+        echo           Check D:\Edugenie\ComfyUI\logs\comfyui.log
+    )
 )
 
 :: ── 4. Start Ollama and Pull Models ──────

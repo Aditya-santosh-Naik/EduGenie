@@ -3,6 +3,7 @@ import { BookOpen, Brain, BarChart3, Upload, Library } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import XPBar from '../Gamification/XPBar';
 import StreakCounter from '../Gamification/StreakCounter';
+import { UserMenu } from '../Auth/UserMenu';
 
 const navItems = [
   { to: '/learn', label: 'Learn', icon: BookOpen },
@@ -50,13 +51,7 @@ export default function Navbar() {
           <XPBar compact />
         </div>
         <StreakCounter />
-        <div className="h-8 w-8 overflow-hidden rounded-full border-2 border-accent-500/30">
-          <img
-            src="https://api.dicebear.com/9.x/bottts-neutral/svg?seed=edugenie"
-            alt="Avatar"
-            className="h-full w-full"
-          />
-        </div>
+        <UserMenu />
       </div>
     </header>
   );

@@ -40,3 +40,15 @@ redis-data/
 # Conversation & Task Tracking
 ISSUES.md
 ROADMAP.md
+
+# Firebase Credentials
+firebase-service-account.json
+
+# ComfyUI (local media server)
+ComfyUI/
+
+# Backend cache
+backend/.cache/
+
+# Test scripts
+test.js

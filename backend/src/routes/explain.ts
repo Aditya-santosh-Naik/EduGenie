@@ -44,7 +44,7 @@ explain.post('/', async (c) => {
     // 3. Stream LLM response via SSE
     return streamSSE(c, async (stream) => {
       try {
-        const generator = await generateExplanation(topic, mode, level, context);
+        const generator = await generateExplanation(topic, mode, level, context, c.req.raw.signal);
         let fullJson = '';
 
         for await (const token of generator) {
