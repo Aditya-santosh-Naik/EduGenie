@@ -25,19 +25,9 @@ export function LoginForm({ mode }: Props) {
         if (!name.trim()) { setError('Please enter your name'); return; }
         await signupWithEmail(email, password, name);
       }
-    } catch (err: any) {
-      // Map Firebase error codes to friendly messages
-      const code = err?.code ?? '';
-      if (code === 'auth/user-not-found' || code === 'auth/wrong-password')
-        setError('Incorrect email or password');
-      else if (code === 'auth/email-already-in-use')
-        setError('An account with this email already exists');
-      else if (code === 'auth/weak-password')
-        setError('Password must be at least 6 characters');
-      else if (code === 'auth/invalid-email')
-        setError('Please enter a valid email address');
-      else
-        setError('Something went wrong. Please try again.');
+    } catch (err) {
+      // The backend already returns student-friendly messages.
+      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -59,9 +49,9 @@ export function LoginForm({ mode }: Props) {
           value={name}
           onChange={e => setName(e.target.value)}
           required
-          className="w-full bg-panel border border-white/8 rounded-xl px-4 py-3
-                     text-text-main text-sm placeholder:text-muted
-                     focus:outline-none focus:border-accent transition-colors"
+          className="w-full bg-bg-panel border border-white/8 rounded-xl px-4 py-3
+                     text-text-main text-sm placeholder:text-text-muted
+                     focus:outline-none focus:border-accent-500 transition-colors"
         />
       )}
 
@@ -71,9 +61,9 @@ export function LoginForm({ mode }: Props) {
         value={email}
         onChange={e => setEmail(e.target.value)}
         required
-        className="w-full bg-panel border border-white/8 rounded-xl px-4 py-3
-                   text-text-main text-sm placeholder:text-muted
-                   focus:outline-none focus:border-accent transition-colors"
+        className="w-full bg-bg-panel border border-white/8 rounded-xl px-4 py-3
+                   text-text-main text-sm placeholder:text-text-muted
+                   focus:outline-none focus:border-accent-500 transition-colors"
       />
 
       <div className="relative">
@@ -83,14 +73,14 @@ export function LoginForm({ mode }: Props) {
           value={password}
           onChange={e => setPassword(e.target.value)}
           required
-          className="w-full bg-panel border border-white/8 rounded-xl px-4 py-3
-                     text-text-main text-sm placeholder:text-muted pr-11
-                     focus:outline-none focus:border-accent transition-colors"
+          className="w-full bg-bg-panel border border-white/8 rounded-xl px-4 py-3
+                     text-text-main text-sm placeholder:text-text-muted pr-11
+                     focus:outline-none focus:border-accent-500 transition-colors"
         />
         <button
           type="button"
           onClick={() => setShowPw(v => !v)}
-          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted
                      hover:text-text-main transition-colors"
         >
           {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -106,7 +96,7 @@ export function LoginForm({ mode }: Props) {
       <button
         type="submit"
         disabled={loading}
-        className="w-full bg-accent hover:bg-accent-dark disabled:opacity-60
+        className="w-full bg-accent-500 hover:bg-accent-600 disabled:opacity-60
                    text-white font-medium py-3 rounded-xl text-sm transition-all
                    flex items-center justify-center gap-2"
       >

@@ -1,55 +1,26 @@
 import { Hono } from 'hono';
-import { redis, redisAvailable } from '../services/cache.js';
+import { getProfile, saveProfile } from '../services/progressStore.js';
 
 const gamification = new Hono();
 
-interface GamificationProfile {
-  xp: number;
-  level: number;
-  streak: number;
-  badges: string[];
-  lastStudied: string | null;
-}
-
-const DEFAULT_PROFILE: GamificationProfile = {
-  xp: 0,
-  level: 1,
-  streak: 0,
-  badges: [],
-  lastStudied: null
-};
-
-async function getProfile(userId: string): Promise<GamificationProfile> {
-  if (!redisAvailable) return { ...DEFAULT_PROFILE };
-  try {
-    const data = await redis.get(`gamification:${userId}`);
-    return data ? JSON.parse(data) : { ...DEFAULT_PROFILE };
-  } catch {
-    return { ...DEFAULT_PROFILE };
-  }
-}
-
-async function saveProfile(userId: string, profile: GamificationProfile): Promise<void> {
-  if (!redisAvailable) return;
-  try {
-    await redis.set(`gamification:${userId}`, JSON.stringify(profile), 'EX', 2592000); // 30 days
-  } catch { /* Redis down — skip save */ }
-}
-
+// The :userId segment is kept so existing clients keep working, but the
+// profile returned is always the caller's own — reading or crediting someone
+// else's progress must not be possible by changing a parameter.
 gamification.get('/profile/:userId', async (c) => {
-  const userId = c.req.param('userId');
-  const profile = await getProfile(userId);
-  return c.json(profile);
+  return c.json(await getProfile(c.get('uid')));
 });
 
 gamification.post('/xp', async (c) => {
-  const { userId, amount, reason } = await c.req.json();
-  if (!userId || typeof amount !== 'number') {
-    return c.json({ error: 'userId and amount required' }, 400);
+  const userId = c.get('uid');
+  const { amount, reason } = await c.req.json();
+  if (typeof amount !== 'number' || !Number.isFinite(amount)) {
+    return c.json({ error: 'amount must be a number' }, 400);
   }
+  // Clamp so a malformed or hostile client can't mint an arbitrary level.
+  const award = Math.min(500, Math.max(0, Math.round(amount)));
 
   const profile = await getProfile(userId);
-  profile.xp += amount;
+  profile.xp += award;
   profile.level = Math.floor(profile.xp / 500) + 1;
   profile.lastStudied = new Date().toISOString();
 
@@ -72,12 +43,11 @@ gamification.post('/xp', async (c) => {
   }
 
   await saveProfile(userId, profile);
-  return c.json({ profile, newBadges, xpAdded: amount, reason });
+  return c.json({ profile, newBadges, xpAdded: award, reason });
 });
 
 gamification.post('/streak', async (c) => {
-  const { userId } = await c.req.json();
-  if (!userId) return c.json({ error: 'userId required' }, 400);
+  const userId = c.get('uid');
 
   const profile = await getProfile(userId);
   const lastStudied = profile.lastStudied ? new Date(profile.lastStudied) : null;

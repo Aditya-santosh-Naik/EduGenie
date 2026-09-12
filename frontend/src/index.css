@@ -113,6 +113,39 @@
     color: var(--text-main);
   }
 
+  /* Used by "Explain Differently", the flashcard navigation and the learning
+     path — it was referenced throughout the app but never actually defined,
+     so those controls rendered as bare text. */
+  .btn-secondary {
+    @apply px-4 py-2 rounded-xl font-medium transition-all duration-200;
+    background: var(--bg-800);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: var(--text-main);
+  }
+
+  .btn-secondary:hover {
+    background: var(--bg-panel);
+    border-color: rgba(255, 255, 255, 0.18);
+  }
+
+  .btn-secondary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 3px;
+  }
+
   .input-field {
     @apply w-full px-4 py-3 rounded-xl outline-none transition-all duration-200;
     background: var(--bg-800);

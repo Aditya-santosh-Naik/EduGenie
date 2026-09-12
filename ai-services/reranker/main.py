@@ -1,11 +1,22 @@
 """
-EduGenie Reranker — BAAI/bge-reranker-v2-m3
-Runs on port 8005. Reranks RAG chunks by relevance to query.
-Uses CPU to preserve VRAM.
+EduGenie Reranker — port 8005.
+
+Second stage of retrieval: the vector search returns chunks scored by a
+bi-encoder, which embeds query and chunk separately and never compares them
+directly. A cross-encoder reads the pair together and scores relevance far more
+accurately — too slowly for a whole corpus, which is why it only ever sees the
+handful of candidates vector search already shortlisted.
+
+Runs on CPU on purpose: the GPU is reserved for the LLM and diffusion models.
+
+RERANKER_MODEL picks the cross-encoder:
+  cross-encoder/ms-marco-MiniLM-L-6-v2   default, ~90MB, tens of ms per pair
+  BAAI/bge-reranker-v2-m3                ~2.2GB, multilingual, markedly slower
 """
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List
+import os
 import torch
 
 app = FastAPI(title="EduGenie Reranker", version="1.0.0")
@@ -14,20 +25,19 @@ app = FastAPI(title="EduGenie Reranker", version="1.0.0")
 reranker_model = None
 
 
+MODEL_NAME = os.getenv("RERANKER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
+
+
 @app.on_event("startup")
 async def load_model():
     global reranker_model
     try:
         from sentence_transformers import CrossEncoder
-        # Load on CPU to preserve GPU VRAM for LLM/ComfyUI
-        reranker_model = CrossEncoder(
-            "BAAI/bge-reranker-v2-m3",
-            max_length=512,
-            device="cpu"
-        )
-        print("[reranker] bge-reranker-v2-m3 loaded (CPU mode)")
+        # CPU on purpose — the GPU belongs to the LLM and ComfyUI.
+        reranker_model = CrossEncoder(MODEL_NAME, max_length=512, device="cpu")
+        print(f"[reranker] {MODEL_NAME} loaded (CPU mode)")
     except Exception as e:
-        print(f"[reranker] Failed to load model: {e}")
+        print(f"[reranker] failed to load {MODEL_NAME}: {e}")
 
 
 class RerankRequest(BaseModel):
@@ -46,7 +56,7 @@ class RerankResult(BaseModel):
 async def health():
     return {
         "status": "ok" if reranker_model is not None else "model_not_loaded",
-        "model": "BAAI/bge-reranker-v2-m3",
+        "model": MODEL_NAME,
         "device": "cpu",
         "service": "reranker"
     }

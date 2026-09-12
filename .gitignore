@@ -50,5 +50,8 @@ ComfyUI/
 # Backend cache
 backend/.cache/
 
+# Local user database (replaces Firebase Auth)
+backend/.data/
+
 # Test scripts
 test.js

@@ -18,6 +18,7 @@ export default function ModeSelector() {
       {modes.map(({ value, label, icon: Icon, description }) => (
         <button
           key={value}
+          type="button"
           onClick={() => setMode(value)}
           className={cn(
             'relative flex flex-col items-center gap-1 rounded-xl px-4 py-3 text-xs transition-all duration-200',

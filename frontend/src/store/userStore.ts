@@ -5,6 +5,8 @@ interface UserState {
   userId: string;
   displayName: string;
   setDisplayName: (name: string) => void;
+  /** Bind local data (XP, graph, cache) to the signed-in account. */
+  setIdentity: (userId: string, displayName: string) => void;
 }
 
 // Note: uuid is listed in package.json but not installed in frontend.
@@ -21,7 +23,8 @@ export const useUserStore = create<UserState>()(
     (set) => ({
       userId: generateId(),
       displayName: 'Student',
-      setDisplayName: (displayName) => set({ displayName })
+      setDisplayName: (displayName) => set({ displayName }),
+      setIdentity: (userId, displayName) => set({ userId, displayName })
     }),
     { name: 'edugenie-user' }
   )

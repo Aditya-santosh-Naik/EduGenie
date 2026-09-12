@@ -48,9 +48,29 @@ try {
   redis = null as unknown as InstanceType<typeof IORedis.default>;
 }
 
-function cacheKey(topic: string, mode: string, level: string): string {
+/**
+ * A cached explanation is only interchangeable with a fresh one when it was
+ * built from the same inputs. Topic/mode/level alone is not enough once RAG is
+ * involved: an answer grounded in one student's uploaded document must never be
+ * replayed to another student, and an ungrounded answer must not be served to
+ * someone who has since uploaded material on that topic. So the scope — the
+ * owner plus a digest of the retrieved context — is part of the key, and
+ * explanations with no context stay in one shared, cacheable pool.
+ */
+function cacheKey(topic: string, mode: string, level: string, scope = ''): string {
   const normalizedTopic = topic.trim().toLowerCase();
-  return `explain:${crypto.createHash('md5').update(`${normalizedTopic}:${mode}:${level}`).digest('hex')}`;
+  const material = `${normalizedTopic}:${mode}:${level}:${scope}`;
+  return `explain:${crypto.createHash('md5').update(material).digest('hex')}`;
+}
+
+/**
+ * Scope for a request that retrieved context: the owner, plus a short digest of
+ * the context itself so re-uploading or removing documents invalidates it.
+ */
+export function contextScope(userId: string, context: string): string {
+  if (!context) return '';
+  const digest = crypto.createHash('md5').update(context).digest('hex').slice(0, 12);
+  return `${userId}:${digest}`;
 }
 
 async function getLocalCachePath(key: string): Promise<string> {
@@ -59,8 +79,13 @@ async function getLocalCachePath(key: string): Promise<string> {
   return path.join(CACHE_DIR, `${safeKey}.json`);
 }
 
-export async function getCached(topic: string, mode: string, level: string): Promise<unknown | null> {
-  const key = cacheKey(topic, mode, level);
+export async function getCached(
+  topic: string,
+  mode: string,
+  level: string,
+  scope = ''
+): Promise<unknown | null> {
+  const key = cacheKey(topic, mode, level, scope);
   if (!redisAvailable) {
     try {
       const p = await getLocalCachePath(key);
@@ -80,8 +105,14 @@ export async function getCached(topic: string, mode: string, level: string): Pro
   }
 }
 
-export async function setCached(topic: string, mode: string, level: string, data: unknown): Promise<void> {
-  const key = cacheKey(topic, mode, level);
+export async function setCached(
+  topic: string,
+  mode: string,
+  level: string,
+  data: unknown,
+  scope = ''
+): Promise<void> {
+  const key = cacheKey(topic, mode, level, scope);
   if (!redisAvailable) {
     try {
       const p = await getLocalCachePath(key);

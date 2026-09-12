@@ -2,13 +2,19 @@ import { useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { Upload, CheckCircle, Loader2, AlertCircle } from 'lucide-react';
 import { api } from '../../lib/api';
-import { useUserStore } from '../../store/userStore';
+
+interface UploadResult {
+  chunkCount: number;
+  message: string;
+  pages?: number;
+  engine?: string;
+  backend?: string;
+}
 
 export default function PDFUploader() {
-  const { userId } = useUserStore();
   const [isDragging, setIsDragging] = useState(false);
   const [status, setStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
-  const [result, setResult] = useState<{ chunkCount: number; message: string } | null>(null);
+  const [result, setResult] = useState<UploadResult | null>(null);
   const [error, setError] = useState('');
 
   const handleFile = useCallback(
@@ -24,9 +30,9 @@ export default function PDFUploader() {
       setResult(null);
 
       try {
-        const data = await api.rag.upload(file, userId);
+        const data = await api.rag.upload(file);
         if (data.success) {
-          setResult({ chunkCount: data.chunkCount, message: data.message });
+          setResult(data as UploadResult);
           setStatus('success');
         } else {
           setError(data.error || 'Upload failed');
@@ -37,7 +43,7 @@ export default function PDFUploader() {
         setStatus('error');
       }
     },
-    [userId]
+    []
   );
 
   const handleDrop = useCallback(
@@ -108,8 +114,12 @@ export default function PDFUploader() {
             <div>
               <p className="text-base font-bold text-success">Upload successful!</p>
               <p className="mt-1 text-sm text-text-muted">{result.message}</p>
+              <p className="mt-1 text-xs text-text-muted">
+                {result.pages ? `${result.pages} page(s) · ` : ''}
+                parsed by {result.engine ?? 'parser'} · indexed in {result.backend ?? 'vector store'}
+              </p>
               <p className="mt-2 text-sm font-medium text-text-main/90">
-                💡 Your custom curriculum is ready.
+                💡 Ask about it on the Learn page — answers will cite this material.
               </p>
             </div>
           </div>

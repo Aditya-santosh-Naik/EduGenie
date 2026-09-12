@@ -1,36 +1,45 @@
-import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState, useEffect, useMemo } from 'react';
+import { motion } from 'framer-motion';
 import { db } from '../../lib/db';
-import { BookOpen, RefreshCw, Trash2, Brain } from 'lucide-react';
+import {
+  BookOpen, Trash2, Brain, ChevronLeft, ChevronRight, RotateCw
+} from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useSRS } from '../../hooks/useSRS';
 
+type Deck = 'due' | 'all';
+
 export default function FlashcardView() {
   const allCards = useLiveQuery(() => db.flashcards.toArray()) || [];
-  // Filter cards due for review
-  const cards = allCards.filter(c => !c.nextReview || c.nextReview <= Date.now());
   const { reviewCard } = useSRS();
 
+  const [deck, setDeck] = useState<Deck>('due');
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
 
-  // Ensure index is within bounds when cards array shrinks
+  const dueCards = useMemo(
+    () => allCards.filter((c) => !c.nextReview || c.nextReview <= Date.now()),
+    [allCards]
+  );
+  // 'all' lets a student revise a finished deck without waiting for the SRS
+  // schedule — the common case the night before a test.
+  const cards = deck === 'due' ? dueCards : allCards;
+
+  // Keep the cursor inside the deck when it shrinks (a review removes a card
+  // from the due list) or when switching decks.
   useEffect(() => {
-    if (currentIndex >= cards.length && cards.length > 0) {
-      setCurrentIndex(Math.max(0, cards.length - 1));
-    }
+    if (currentIndex >= cards.length) setCurrentIndex(cards.length > 0 ? cards.length - 1 : 0);
   }, [cards.length, currentIndex]);
 
-  useEffect(() => {
-    setIsFlipped(false);
-  }, [currentIndex]);
+  useEffect(() => { setIsFlipped(false); }, [currentIndex, deck]);
 
-  const handlePrev = () => {
-    setCurrentIndex((prev) => (prev - 1 + cards.length) % cards.length);
+  const go = (delta: number) => {
+    if (cards.length === 0) return;
+    setCurrentIndex((prev) => (prev + delta + cards.length) % cards.length);
   };
 
   const clearDeck = async () => {
-    if (confirm('Are you sure you want to delete all flashcards?')) {
+    if (confirm('Delete every flashcard in your deck?')) {
       await db.flashcards.clear();
       setCurrentIndex(0);
     }
@@ -39,129 +48,161 @@ export default function FlashcardView() {
   const handleRate = async (rating: 1 | 2 | 3) => {
     const cardId = cards[currentIndex]?.id;
     if (!cardId) return;
-    
     await reviewCard(cardId, rating);
     setIsFlipped(false);
+    // Reviewing drops the card out of the due deck, so the same index already
+    // points at the next card; in 'all' mode advance explicitly.
+    if (deck === 'all') go(1);
   };
 
   if (allCards.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-full space-y-4 text-text-muted mt-24">
+      <div className="mt-24 flex flex-col items-center justify-center space-y-4 text-text-muted">
         <BookOpen size={48} className="opacity-50" />
-        <h2 className="text-xl font-semibold">Your Study Deck is Empty</h2>
-        <p>Generate an explanation and click "Save Flashcards" to add concepts here.</p>
+        <h2 className="text-xl font-semibold text-text-main">Your study deck is empty</h2>
+        <p>Generate an explanation and click “Save Flashcards” to add concepts here.</p>
       </div>
     );
   }
 
   if (cards.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-full space-y-4 text-text-muted mt-24">
+      <div className="mt-24 flex flex-col items-center justify-center space-y-4 text-text-muted">
         <div className="flex h-16 w-16 items-center justify-center rounded-full bg-success/20 text-success">
           <Brain size={32} />
         </div>
-        <h2 className="text-2xl font-bold text-text-main">You're all caught up!</h2>
-        <p>You've reviewed all your due flashcards. Check back later.</p>
+        <h2 className="text-2xl font-bold text-text-main">You're all caught up</h2>
+        <p>Nothing is due for review right now.</p>
+        <button onClick={() => setDeck('all')} className="btn-secondary px-4 py-2 text-sm">
+          Revise all {allCards.length} cards anyway
+        </button>
       </div>
     );
   }
 
-  const currentCard = cards[currentIndex];
+  const card = cards[currentIndex];
 
   return (
-    <div className="flex flex-col items-center w-full max-w-2xl mx-auto space-y-8 mt-12">
-      <div className="flex items-center justify-between w-full">
+    <div className="mx-auto mt-8 flex w-full max-w-2xl flex-col items-center space-y-6">
+      {/* Header */}
+      <div className="flex w-full items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">Active Recall</h2>
-          <p className="text-text-muted text-sm">Topic: {currentCard.topic}</p>
+          <p className="text-sm text-text-muted">Topic: {card.topic}</p>
         </div>
-        <button
-          onClick={clearDeck}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-danger/10 text-danger hover:bg-danger/20 transition-colors text-sm"
+        <div className="flex items-center gap-2">
+          <div className="flex gap-1 rounded-lg bg-bg-800/60 p-1">
+            {(['due', 'all'] as const).map((d) => (
+              <button
+                key={d}
+                onClick={() => setDeck(d)}
+                className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                  deck === d
+                    ? 'bg-accent-500/20 text-accent-400'
+                    : 'text-text-muted hover:text-text-main'
+                }`}
+              >
+                {d === 'due' ? `Due (${dueCards.length})` : `All (${allCards.length})`}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={clearDeck}
+            className="flex items-center gap-2 rounded-lg bg-danger/10 px-3 py-1.5 text-sm text-danger transition-colors hover:bg-danger/20"
+          >
+            <Trash2 size={16} />
+            Clear
+          </button>
+        </div>
+      </div>
+
+      {/* The card — a real two-sided card that rotates in 3D on click */}
+      <div className="h-80 w-full [perspective:1600px]">
+        <motion.div
+          onClick={() => setIsFlipped((f) => !f)}
+          animate={{ rotateY: isFlipped ? 180 : 0 }}
+          transition={{ duration: 0.5, ease: [0.4, 0.0, 0.2, 1] }}
+          className="relative h-full w-full cursor-pointer [transform-style:preserve-3d]"
         >
-          <Trash2 size={16} />
-          Clear Deck
+          {/* Front — the question or concept */}
+          <div
+            className="absolute inset-0 flex flex-col items-center justify-center rounded-2xl
+                       border border-white/10 bg-bg-800 p-8 shadow-lg [backface-visibility:hidden]"
+          >
+            <p className="mb-4 text-xs font-medium uppercase tracking-widest text-text-muted">
+              Concept
+            </p>
+            <div className="custom-scrollbar max-h-[70%] w-full overflow-y-auto px-2 text-center">
+              <h3 className="text-2xl font-bold text-accent-400">{card.front}</h3>
+            </div>
+            <p className="absolute bottom-5 flex items-center gap-1.5 text-xs text-text-muted">
+              <RotateCw size={12} /> Click to reveal
+            </p>
+          </div>
+
+          {/* Back — the answer, pre-rotated so it reads correctly when flipped */}
+          <div
+            className="absolute inset-0 flex flex-col items-center justify-center rounded-2xl
+                       border border-accent-500/30 bg-bg-panel p-8 shadow-lg
+                       [backface-visibility:hidden] [transform:rotateY(180deg)]"
+          >
+            <p className="mb-4 text-xs font-medium uppercase tracking-widest text-text-muted">
+              Answer
+            </p>
+            <div className="custom-scrollbar max-h-[75%] w-full overflow-y-auto px-2 text-center">
+              <p className="text-base leading-relaxed text-text-main/90">{card.back}</p>
+            </div>
+          </div>
+        </motion.div>
+      </div>
+
+      {/* Navigation */}
+      <div className="flex w-full items-center justify-between">
+        <button
+          onClick={() => go(-1)}
+          className="btn-secondary flex items-center gap-1 px-4 py-2 text-sm"
+        >
+          <ChevronLeft size={16} /> Previous
+        </button>
+        <span className="text-sm font-medium text-text-muted">
+          {currentIndex + 1} / {cards.length}
+        </span>
+        <button
+          onClick={() => go(1)}
+          className="btn-secondary flex items-center gap-1 px-4 py-2 text-sm"
+        >
+          Next <ChevronRight size={16} />
         </button>
       </div>
 
-      <div className="relative w-full h-80 perspective-1000">
-        <AnimatePresence initial={false} mode="wait">
+      {/* Rating — only meaningful once the answer has been seen */}
+      <div className="h-14 w-full">
+        {isFlipped && (
           <motion.div
-            key={currentCard.id + (isFlipped ? '-back' : '-front')}
-            initial={{ rotateX: isFlipped ? -90 : 90, opacity: 0 }}
-            animate={{ rotateX: 0, opacity: 1 }}
-            exit={{ rotateX: isFlipped ? 90 : -90, opacity: 0 }}
-            transition={{ duration: 0.3 }}
-            onClick={() => !isFlipped && setIsFlipped(true)}
-            className={`absolute inset-0 w-full h-full glass-card p-8 flex flex-col items-center justify-center cursor-pointer shadow-lg hover:shadow-xl transition-shadow ${
-              isFlipped ? 'bg-primary/5 border-primary/20 cursor-default' : ''
-            }`}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex items-center justify-center gap-3"
           >
-            {!isFlipped && (
-              <div className="absolute top-4 right-4 text-text-muted animate-pulse">
-                <RefreshCw size={20} className="opacity-50" />
-              </div>
-            )}
-            
-            <p className="text-sm font-medium text-text-muted mb-4 tracking-wider uppercase">
-              {isFlipped ? 'Answer' : 'Concept'}
-            </p>
-            
-            <div className="text-center w-full max-h-[80%] overflow-y-auto custom-scrollbar px-4">
-              {isFlipped ? (
-                <p className="text-lg leading-relaxed text-text-main/90 font-mono">
-                  {currentCard.back}
-                </p>
-              ) : (
-                <h3 className="text-3xl font-bold text-accent-400">
-                  {currentCard.front}
-                </h3>
-              )}
-            </div>
-          </motion.div>
-        </AnimatePresence>
-      </div>
-
-      <div className="flex items-center justify-center w-full h-16">
-        {isFlipped ? (
-          <div className="flex items-center gap-4">
+            <span className="mr-1 text-xs text-text-muted">How well did you know it?</span>
             <button
               onClick={() => handleRate(1)}
-              className="px-6 py-2 rounded-xl bg-danger/10 text-danger hover:bg-danger/20 transition-colors font-medium border border-danger/20 hover:scale-105 transform duration-200"
+              className="rounded-xl border border-danger/20 bg-danger/10 px-5 py-2 text-sm font-medium text-danger transition-colors hover:bg-danger/20"
             >
               Hard
             </button>
             <button
               onClick={() => handleRate(2)}
-              className="px-6 py-2 rounded-xl bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 transition-colors font-medium border border-amber-500/20 hover:scale-105 transform duration-200"
+              className="rounded-xl border border-warning/20 bg-warning/10 px-5 py-2 text-sm font-medium text-warning transition-colors hover:bg-warning/20"
             >
               Good
             </button>
             <button
               onClick={() => handleRate(3)}
-              className="px-6 py-2 rounded-xl bg-success/10 text-success hover:bg-success/20 transition-colors font-medium border border-success/20 hover:scale-105 transform duration-200"
+              className="rounded-xl border border-success/20 bg-success/10 px-5 py-2 text-sm font-medium text-success transition-colors hover:bg-success/20"
             >
               Easy
             </button>
-          </div>
-        ) : (
-          <div className="flex items-center justify-between w-full">
-            <button
-              onClick={handlePrev}
-              className="px-6 py-2 rounded-xl bg-surface-lighter hover:bg-surface-light transition-colors font-medium"
-            >
-              Previous
-            </button>
-            <div className="text-text-muted font-medium">
-              {currentIndex + 1} / {cards.length}
-            </div>
-            <button
-              onClick={() => setIsFlipped(true)}
-              className="px-6 py-2 rounded-xl bg-primary hover:bg-primary-hover text-background transition-colors font-medium"
-            >
-              Show Answer
-            </button>
-          </div>
+          </motion.div>
         )}
       </div>
     </div>

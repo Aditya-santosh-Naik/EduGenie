@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { BookOpen, Brain, BarChart3, Upload, Library } from 'lucide-react';
+import { BookOpen, Brain, BarChart3, Library, FileUp } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import XPBar from '../Gamification/XPBar';
 import StreakCounter from '../Gamification/StreakCounter';
@@ -10,7 +10,7 @@ const navItems = [
   { to: '/quiz', label: 'Quiz', icon: Brain },
   { to: '/flashcards', label: 'Flashcards', icon: Library },
   { to: '/progress', label: 'Progress', icon: BarChart3 },
-  { to: '/upload', label: 'Upload', icon: Upload }
+  { to: '/upload', label: 'Materials', icon: FileUp }
 ];
 
 export default function Navbar() {

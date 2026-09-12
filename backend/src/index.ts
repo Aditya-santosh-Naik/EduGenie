@@ -4,7 +4,8 @@ import { Hono } from 'hono';
 import { logger } from 'hono/logger';
 import { corsMiddleware } from './middleware/cors.js';
 import { rateLimitMiddleware } from './middleware/rateLimit.js';
-import { verifyToken } from './middleware/verifyToken.js';
+import { requireAuth } from './middleware/requireAuth.js';
+import { auth } from './routes/auth.js';
 import { explain } from './routes/explain.js';
 import { quiz } from './routes/quiz.js';
 import { rag } from './routes/rag.js';
@@ -18,7 +19,7 @@ const app = new Hono();
 app.use('*', logger());
 app.use('*', corsMiddleware);
 app.use('/api/*', rateLimitMiddleware);
-app.use('/api/*', verifyToken);
+app.use('/api/*', requireAuth);
 
 // Health check
 app.get('/health', (c) =>
@@ -39,6 +40,7 @@ app.get('/health', (c) =>
 );
 
 // API routes
+app.route('/api/auth', auth);
 app.route('/api/explain', explain);
 app.route('/api/quiz', quiz);
 app.route('/api/rag', rag);
