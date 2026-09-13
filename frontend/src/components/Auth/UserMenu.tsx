@@ -31,28 +31,20 @@ export function UserMenu() {
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen(v => !v)}
-        className="flex items-center gap-2 bg-panel hover:bg-bg-800
+        className="flex items-center gap-2 bg-bg-panel hover:bg-bg-800
                    border border-white/5 rounded-xl px-3 py-1.5
                    transition-all"
       >
         {/* Avatar */}
-        {user.photoURL ? (
-          <img
-            src={user.photoURL}
-            alt={user.displayName ?? 'User'}
-            className="w-7 h-7 rounded-full object-cover"
-          />
-        ) : (
-          <div className="w-7 h-7 rounded-full bg-accent flex items-center
-                          justify-center text-xs font-semibold text-white">
-            {user.isGuest ? <User size={14} /> : initials}
-          </div>
-        )}
+        <div className="w-7 h-7 rounded-full bg-accent-500 flex items-center
+                        justify-center text-xs font-semibold text-white">
+          {user.isGuest ? <User size={14} /> : initials}
+        </div>
 
         <span className="text-sm text-text-main max-w-[100px] truncate hidden sm:block">
-          {user.isGuest ? 'Guest' : (user.displayName ?? user.email ?? 'Student')}
+          {user.isGuest ? 'Guest' : (user.displayName || user.email || 'Student')}
         </span>
-        <ChevronDown size={14} className="text-muted" />
+        <ChevronDown size={14} className="text-text-muted" />
       </button>
 
       <AnimatePresence>
@@ -68,9 +60,9 @@ export function UserMenu() {
             {/* User info */}
             <div className="px-4 py-3 border-b border-white/5">
               <p className="text-sm font-medium text-text-main truncate">
-                {user.isGuest ? 'Guest Student' : (user.displayName ?? 'Student')}
+                {user.isGuest ? 'Guest Student' : (user.displayName || 'Student')}
               </p>
-              <p className="text-xs text-muted truncate">
+              <p className="text-xs text-text-muted truncate">
                 {user.isGuest ? 'Progress not saved' : user.email}
               </p>
             </div>
@@ -78,12 +70,12 @@ export function UserMenu() {
             {/* Guest upgrade prompt */}
             {user.isGuest && (
               <div className="px-4 py-3 border-b border-white/5">
-                <p className="text-xs text-warn mb-2">
+                <p className="text-xs text-warning mb-2">
                   Create an account to save your progress, XP, and streaks.
                 </p>
                 <a
                   href="/login"
-                  className="text-xs text-accent hover:underline"
+                  className="text-xs text-accent-400 hover:underline"
                 >
                   Create free account →
                 </a>
@@ -94,7 +86,7 @@ export function UserMenu() {
             <button
               onClick={async () => { setOpen(false); await logoutUser(); }}
               className="w-full flex items-center gap-3 px-4 py-3 text-sm
-                         text-muted hover:text-danger hover:bg-danger/5
+                         text-text-muted hover:text-danger hover:bg-danger/5
                          transition-colors"
             >
               <LogOut size={14} />

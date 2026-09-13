@@ -3,8 +3,23 @@ import { v4 as uuidv4 } from 'uuid';
 
 const COMFYUI_URL = process.env.COMFYUI_URL || 'http://localhost:8188';
 
-function buildFluxWorkflow(prompt: string) {
-  const safePrompt = `educational diagram, textbook illustration style, clean white background, labeled, safe for students, no humans, no text: ${prompt}`;
+export type ImageStyle = 'illustration' | 'cartoon' | 'diagram';
+
+const STYLE_PREFIX: Record<ImageStyle, string> = {
+  // Default: the colourful, friendly textbook art this app is built around.
+  illustration:
+    'a colourful educational illustration for a school textbook, clean flat vector art, ' +
+    'bright friendly colours, simple clear shapes, white background, safe for children',
+  cartoon:
+    'a fun cartoon illustration for children, bold outlines, bright playful colours, ' +
+    'simple cheerful shapes, white background, safe for children',
+  diagram:
+    'a labelled educational diagram, textbook illustration style, clean white background, ' +
+    'clear arrows and labels, safe for students'
+};
+
+function buildFluxWorkflow(prompt: string, style: ImageStyle = 'illustration') {
+  const safePrompt = `${STYLE_PREFIX[style] ?? STYLE_PREFIX.illustration}, no humans: ${prompt}`;
   const clientId = uuidv4();
   return {
     client_id: clientId,
@@ -60,7 +75,7 @@ function buildFluxWorkflow(prompt: string) {
   };
 }
 
-async function pollComfyUI(promptId: string, maxWait = 120000): Promise<string | null> {
+async function pollComfyUI(promptId: string, maxWait = 420000): Promise<string | null> {
   const start = Date.now();
   while (Date.now() - start < maxWait) {
     try {
@@ -80,7 +95,10 @@ async function pollComfyUI(promptId: string, maxWait = 120000): Promise<string |
   return null;
 }
 
-export async function generateImage(prompt: string): Promise<string | null> {
+export async function generateImage(
+  prompt: string,
+  style: ImageStyle = 'illustration'
+): Promise<string | null> {
   // Check ComfyUI is available — never crash if offline
   try {
     await fetch(`${COMFYUI_URL}/system_stats`, { signal: AbortSignal.timeout(3000) });
@@ -91,15 +109,21 @@ export async function generateImage(prompt: string): Promise<string | null> {
 
   return withVRAM(async () => {
     await unloadOllama(); // Free VRAM from LLM before image gen
-    const workflow = buildFluxWorkflow(prompt);
+    const workflow = buildFluxWorkflow(prompt, style);
     try {
       const res = await fetch(`${COMFYUI_URL}/prompt`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(workflow)
       });
+      if (!res.ok) {
+        console.error('[imageGen] ComfyUI rejected the workflow:', res.status, await res.text());
+        return null;
+      }
       const { prompt_id } = await res.json() as { prompt_id: string };
-      return await pollComfyUI(prompt_id);
+      const url = await pollComfyUI(prompt_id);
+      if (!url) console.error('[imageGen] timed out waiting for ComfyUI job', prompt_id);
+      return url;
     } catch (e) {
       console.error('[imageGen] ComfyUI error:', e);
       return null;

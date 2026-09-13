@@ -26,6 +26,7 @@ export default function VoiceInput({ onTranscript }: VoiceInputProps) {
 
   return (
     <button
+      type="button"
       onClick={handleToggle}
       disabled={isProcessing}
       className={cn(

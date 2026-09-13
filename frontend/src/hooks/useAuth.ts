@@ -1,111 +1,64 @@
 import { useEffect } from 'react';
-import {
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  signInWithPopup,
-  signInAnonymously,
-  signOut,
-  onAuthStateChanged,
-  updateProfile,
-  User
-} from 'firebase/auth';
-import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db, googleProvider } from '../lib/firebase';
-import { useAuthStore, AuthUser } from '../store/authStore';
+import { authApi } from '../lib/api';
+import { useAuthStore } from '../store/authStore';
+import { useUserStore } from '../store/userStore';
 
-// Convert Firebase User → our AuthUser shape
-async function toAuthUser(firebaseUser: User): Promise<AuthUser> {
-  const token = await firebaseUser.getIdToken();
-  return {
-    uid:         firebaseUser.uid,
-    email:       firebaseUser.email,
-    displayName: firebaseUser.displayName,
-    photoURL:    firebaseUser.photoURL,
-    isGuest:     firebaseUser.isAnonymous,
-    idToken:     token,
-    createdAt:   new Date().toISOString(),
-  };
-}
+// Local auth against the EduGenie backend — no cloud provider. The session
+// token lives in the persisted auth store.
 
-// Create or update Firestore user profile
-async function ensureUserProfile(firebaseUser: User) {
-  const ref = doc(db, 'users', firebaseUser.uid);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) {
-    await setDoc(ref, {
-      uid:         firebaseUser.uid,
-      email:       firebaseUser.email,
-      displayName: firebaseUser.displayName ?? 'Student',
-      photoURL:    firebaseUser.photoURL,
-      isGuest:     firebaseUser.isAnonymous,
-      role:        'student',
-      createdAt:   serverTimestamp(),
-      xp:          0,
-      level:       1,
-      streak:      0,
-    });
-  }
+/** Restores the saved session. Mounted once, by AuthProvider in App.tsx. */
+export function useAuthBootstrap() {
+  const { setSession, setHydrated, logout } = useAuthStore();
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      const { token } = useAuthStore.getState();
+
+      if (!token) {
+        if (!cancelled) setHydrated(true);
+        return;
+      }
+
+      try {
+        const user = await authApi.me(token);
+        if (cancelled) return;
+        setSession(user, token);
+        useUserStore.getState().setIdentity(user.uid, user.displayName);
+      } catch {
+        // Token expired, secret rotated, or account deleted — start signed out.
+        if (!cancelled) logout();
+      } finally {
+        if (!cancelled) setHydrated(true);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, []);
 }
 
 export function useAuth() {
-  const { setUser, setLoading, setHydrated, updateToken, logout } = useAuthStore();
+  const { setSession, setLoading, logout } = useAuthStore();
 
-  // Listen to Firebase auth state on mount
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        const user = await toAuthUser(firebaseUser);
-        await ensureUserProfile(firebaseUser);
-        setUser(user);
-
-        // Refresh token every 55 minutes (Firebase tokens expire at 60 min)
-        const interval = setInterval(async () => {
-          const freshToken = await firebaseUser.getIdToken(true);
-          updateToken(freshToken);
-        }, 55 * 60 * 1000);
-
-        setHydrated(true);
-        return () => clearInterval(interval);
-      } else {
-        logout();
-        setHydrated(true);
-      }
-    });
-    return () => unsubscribe();
-  }, []);
+  const applySession = (session: { user: AuthResult['user']; token: string }) => {
+    setSession(session.user, session.token);
+    useUserStore.getState().setIdentity(session.user.uid, session.user.displayName);
+  };
 
   const loginWithEmail = async (email: string, password: string) => {
     setLoading(true);
     try {
-      const { user } = await signInWithEmailAndPassword(auth, email, password);
-      setUser(await toAuthUser(user));
+      applySession(await authApi.login(email, password));
     } finally {
       setLoading(false);
     }
   };
 
-  const signupWithEmail = async (
-    email: string,
-    password: string,
-    name: string
-  ) => {
+  const signupWithEmail = async (email: string, password: string, name: string) => {
     setLoading(true);
     try {
-      const { user } = await createUserWithEmailAndPassword(auth, email, password);
-      await updateProfile(user, { displayName: name });
-      await ensureUserProfile(user);
-      setUser(await toAuthUser(user));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loginWithGoogle = async () => {
-    setLoading(true);
-    try {
-      const { user } = await signInWithPopup(auth, googleProvider);
-      await ensureUserProfile(user);
-      setUser(await toAuthUser(user));
+      applySession(await authApi.register(email, password, name));
     } finally {
       setLoading(false);
     }
@@ -114,23 +67,17 @@ export function useAuth() {
   const continueAsGuest = async () => {
     setLoading(true);
     try {
-      const { user } = await signInAnonymously(auth);
-      setUser(await toAuthUser(user));
+      applySession(await authApi.guest());
     } finally {
       setLoading(false);
     }
   };
 
   const logoutUser = async () => {
-    await signOut(auth);
     logout();
   };
 
-  return {
-    loginWithEmail,
-    signupWithEmail,
-    loginWithGoogle,
-    continueAsGuest,
-    logoutUser
-  };
+  return { loginWithEmail, signupWithEmail, continueAsGuest, logoutUser };
 }
+
+type AuthResult = Awaited<ReturnType<typeof authApi.login>>;

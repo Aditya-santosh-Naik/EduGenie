@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { isSafe } from '../services/safety.js';
-import { generateExplanation } from '../services/llm.js';
+import { generateExplanation, generateVisuals } from '../services/llm.js';
 import { retrieveContext } from '../services/rag.js';
 import { generateImage } from '../services/imageGen.js';
 import { searchYouTube } from '../services/youtube.js';
@@ -10,7 +10,12 @@ const explain = new Hono();
 
 explain.post('/', async (c) => {
   try {
-    const { topic, mode = 'text', level = 'beginner', userId } = await c.req.json();
+    const { topic, mode = 'text', level = 'beginner' } = await c.req.json();
+
+    // The owner of the documents to search comes from the verified token, never
+    // from the request body — a client-supplied id would let anyone read
+    // another student's uploaded material.
+    const userId = c.get('uid');
 
     if (!topic || typeof topic !== 'string') {
       return c.json({ error: 'topic is required' }, 400);
@@ -31,25 +36,54 @@ explain.post('/', async (c) => {
       );
     }
 
-    // 2. Retrieve RAG context — skip if Qdrant is down
+    // 2. Ground the explanation in the student's own uploaded material when
+    //    there is any. A retrieval failure must never block the lesson.
     let context = '';
     if (userId) {
       try {
         context = await retrieveContext(topic, userId);
-      } catch {
-        // Qdrant not running — proceed without RAG context
+        if (context) {
+          console.log(`[explain] grounding "${topic}" in ${context.length} chars of uploaded material`);
+        }
+      } catch (err) {
+        console.warn('[explain] retrieval failed — continuing without context:', err);
       }
     }
 
     // 3. Stream LLM response via SSE
     return streamSSE(c, async (stream) => {
       try {
-        const generator = await generateExplanation(topic, mode, level, context, c.req.raw.signal);
+        const generator = await generateExplanation(
+          topic,
+          mode,
+          level,
+          context,
+          c.req.raw.signal,
+          userId
+        );
         let fullJson = '';
 
         for await (const token of generator) {
           fullJson += token;
           await stream.writeSSE({ data: token, event: 'token' });
+        }
+
+        // The main prompt only reliably returns explanationText on a small
+        // local model, so ask separately for the visual aids and send them as
+        // their own event.
+        try {
+          const extras = await generateVisuals(topic, level);
+          if (
+            extras &&
+            (extras.images.length ||
+              extras.diagram ||
+              extras.applications.length ||
+              extras.nextSteps.length)
+          ) {
+            await stream.writeSSE({ data: JSON.stringify(extras), event: 'extras' });
+          }
+        } catch {
+          /* non-critical */
         }
 
         // After explanation is done, fetch YouTube video
@@ -95,10 +129,16 @@ explain.post('/', async (c) => {
 
 // Generate a single image for a prompt
 explain.post('/image', async (c) => {
-  const { prompt } = await c.req.json();
+  const { prompt, style } = await c.req.json();
   if (!prompt) return c.json({ error: 'prompt required' }, 400);
 
-  const imageUrl = await generateImage(prompt);
+  const imageUrl = await generateImage(prompt, style);
+  if (!imageUrl) {
+    return c.json(
+      { error: 'Image generation failed or timed out. Is ComfyUI running on port 8188?' },
+      503
+    );
+  }
   return c.json({ imageUrl });
 });
 

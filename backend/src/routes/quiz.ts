@@ -23,7 +23,7 @@ Generate a quiz as ONLY a valid JSON object with this exact structure:
 }
 
 RULES:
-- Generate exactly 5 questions per quiz
+- Generate exactly the number of questions the user asks for
 - Each question must have exactly 4 options
 - answerIndex is 0-based
 - Questions should test understanding, not just memory
@@ -32,7 +32,13 @@ RULES:
 
 quiz.post('/generate', async (c) => {
   try {
-    const { topic, level = 'beginner', questionCount = 5 } = await c.req.json();
+    const body = await c.req.json();
+    const { topic, level = 'beginner' } = body;
+
+    // Students choose how many questions they want; clamp so a typo can't ask
+    // the model for hundreds and stall the GPU.
+    const requested = Number(body.questionCount ?? 5);
+    const questionCount = Math.min(20, Math.max(1, Number.isFinite(requested) ? Math.round(requested) : 5));
 
     if (!topic) return c.json({ error: 'topic is required' }, 400);
 
@@ -46,9 +52,10 @@ quiz.post('/generate', async (c) => {
       return c.json({ error: 'Cannot generate quiz for this topic.', reason: safety.reason }, 400);
     }
 
-  // Check cache
-  const cacheKey = `quiz:${topic}:${level}`;
-  const cached = await getCached(topic, 'quiz', level);
+  // Cache per (topic, level, count): asking for a different number of
+  // questions — or explicitly asking for more — must not replay the old set.
+  const variant = `quiz:${questionCount}${body.exclude ? ':more' : ''}`;
+  const cached = body.exclude ? null : await getCached(topic, variant, level);
   if (cached) return c.json(cached);
 
   return streamSSE(c, async (stream) => {
@@ -65,7 +72,12 @@ quiz.post('/generate', async (c) => {
               { role: 'system', content: QUIZ_SYSTEM_PROMPT },
               {
                 role: 'user',
-                content: `Generate a ${level}-level quiz with ${questionCount} questions about: "${topic}"`
+                content: `Generate a ${level}-level quiz with exactly ${questionCount} question${questionCount === 1 ? '' : 's'} about: "${topic}"${
+                  body.exclude ? `
+
+Do NOT repeat any of these questions the student has already answered:
+${body.exclude}` : ''
+                }`
               }
             ],
             options: { temperature: 0.7, num_ctx: 4096 }
@@ -95,7 +107,7 @@ quiz.post('/generate', async (c) => {
                   try {
                     const cleanText = fullContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
                     const parsedContent = JSON.parse(cleanText);
-                    await setCached(topic, 'quiz', level, parsedContent);
+                    if (!body.exclude) await setCached(topic, variant, level, parsedContent);
                   } catch { /* don't cache partial */ }
                 }
               } catch { /* skip malformed */ }

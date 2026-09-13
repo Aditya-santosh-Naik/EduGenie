@@ -14,10 +14,10 @@ export default function PrerequisitePrompt({ topics, onTopicClick, onAccept }: P
     <motion.div
       initial={{ opacity: 0, scale: 0.95, y: 10 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
-      className="glass-card overflow-hidden border-warn/30 bg-bg-800"
+      className="glass-card overflow-hidden border-warning/30 bg-bg-800"
     >
-      <div className="bg-warn/10 p-6 flex flex-col items-center text-center space-y-4">
-        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-warn/20 text-warn">
+      <div className="bg-warning/10 p-6 flex flex-col items-center text-center space-y-4">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-warning/20 text-warning">
           <AlertTriangle size={24} />
         </div>
         
@@ -40,10 +40,10 @@ export default function PrerequisitePrompt({ topics, onTopicClick, onAccept }: P
           ))}
         </div>
 
-        <div className="w-full pt-6 mt-4 border-t border-warn/10 flex justify-center">
+        <div className="w-full pt-6 mt-4 border-t border-warning/10 flex justify-center">
           <button
             onClick={onAccept}
-            className="flex items-center gap-2 text-sm font-medium text-warn hover:text-warn-light transition-colors"
+            className="flex items-center gap-2 text-sm font-medium text-warning hover:text-warn-light transition-colors"
           >
             <CheckCircle2 size={16} />
             I already know these — continue anyway

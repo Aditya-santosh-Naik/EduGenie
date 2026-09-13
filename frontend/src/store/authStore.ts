@@ -4,48 +4,42 @@ import { persist } from 'zustand/middleware';
 export interface AuthUser {
   uid:         string;
   email:       string | null;
-  displayName: string | null;
-  photoURL:    string | null;
+  displayName: string;
   isGuest:     boolean;
-  idToken:     string | null;   // refreshed Firebase ID token
   createdAt:   string;
 }
 
 interface AuthState {
-  user:         AuthUser | null;
-  isLoading:    boolean;
-  isHydrated:   boolean;
-  setUser:      (user: AuthUser | null) => void;
-  setLoading:   (v: boolean) => void;
-  setHydrated:  (v: boolean) => void;
-  updateToken:  (token: string) => void;
-  logout:       () => void;
+  user:        AuthUser | null;
+  token:       string | null;
+  isLoading:   boolean;
+  isHydrated:  boolean;
+  setSession:  (user: AuthUser, token: string) => void;
+  setLoading:  (v: boolean) => void;
+  setHydrated: (v: boolean) => void;
+  logout:      () => void;
 }
 
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
-      user:        null,
-      isLoading:   true,
-      isHydrated:  false,
+      user:       null,
+      token:      null,
+      isLoading:  false,
+      isHydrated: false,
 
-      setUser:     (user)    => set({ user, isLoading: false }),
-      setLoading:  (v)       => set({ isLoading: v }),
-      setHydrated: (v)       => set({ isHydrated: v }),
-      updateToken: (token)   => set((s) => ({
-        user: s.user ? { ...s.user, idToken: token } : null
-      })),
-      logout: () => set({ user: null, isLoading: false }),
+      setSession:  (user, token) => set({ user, token, isLoading: false }),
+      setLoading:  (v) => set({ isLoading: v }),
+      setHydrated: (v) => set({ isHydrated: v }),
+      logout:      () => set({ user: null, token: null, isLoading: false }),
     }),
     {
       name:    'edugenie-auth',
-      version: 1,
-      // Only persist non-sensitive fields — token is always refreshed on load
-      partialize: (s) => ({
-        user: s.user
-          ? { ...s.user, idToken: null }  // never persist token to localStorage
-          : null
-      })
+      version: 2,
+      // The token is persisted deliberately: this is a local-first desktop app
+      // and the backend runs on the same machine, so keeping the session across
+      // reloads is the point. Nothing here leaves the device.
+      partialize: (s) => ({ user: s.user, token: s.token }),
     }
   )
 );
